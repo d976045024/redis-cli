@@ -2,10 +2,12 @@ package pkg
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/redis-cli/pkg/constants"
+	"github.com/redis-cli/pkg/models"
 	"github.com/redis-cli/pkg/types"
 )
 
@@ -17,8 +19,52 @@ func (r *RedisRunner) TestConnect() error {
 	return r.client.Ping(context.Background()).Err()
 }
 
-func (r *RedisRunner) Query(s *string, args ...any) {
+func (r *RedisRunner) Query(ctx context.Context, s *string, args ...any) (*models.QueryResult, error) {
+	result := &models.QueryResult{}
+	switch *s {
+	case constants.REDIS_GET:
+		if len(args) != 1 {
+			result.Status = constants.REDIS_STATUS_ERROR
+			result.Message = fmt.Sprintf("get method requires exactly one argument, but get %d instead\n", len(args))
+			return result, errors.New(result.Message)
+		}
+		key, ok := args[0].(string)
+		if !ok {
+			result.Status = constants.REDIS_STATUS_ERROR
+			result.Message = fmt.Sprintf("set argument must be a string, but get type %T", args[0])
+			return result, errors.New(result.Message)
+		}
+		val, err := r.client.Get(ctx, key).Result()
+		if err != nil {
+			result.Status = constants.REDIS_STATUS_ERROR
+			result.Message = err.Error()
+			return result, err
+		}
+		result.Status = constants.REDIS_STATUS_SUCCESS
+		result.Data = val
+		return result, nil
+	case constants.REDIS_SET:
+		if len(args) != 2 {
+			result.Status = constants.REDIS_STATUS_ERROR
+			result.Message = fmt.Sprintf("get method requires exactly one argument, but get %d instead\n", len(args))
+			return result, errors.New(result.Message)
+		}
+		key, ok := args[0].(string)
+		if !ok {
+			result.Status = constants.REDIS_STATUS_ERROR
+			result.Message = fmt.Sprintf("the first argument of set must be a string, but get type %T", args[0])
+			return result, errors.New(result.Message)
+		}
+		val := args[1]
+		ans, err := r.client.Set(ctx, key, val, 0).Result()
+		if err != nil {
+			return nil, err
+		}
+		result.Status = constants.REDIS_STATUS_SUCCESS
+		result.Data = ans
+	}
 
+	return result, nil
 }
 
 func NewRedisRunner(opts map[string]any) (*RedisRunner, error) {
